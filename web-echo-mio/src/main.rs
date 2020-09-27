@@ -44,7 +44,7 @@ fn main() {
                     };
                     stream.write(message.as_bytes()).unwrap();
                     println!("Connect form {} end", stream.peer_addr().unwrap());
-                },
+                }
             }
         }
     }

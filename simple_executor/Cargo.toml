@@ -1,5 +1,5 @@
 [package]
-name = "web-echo-mio"
+name = "simple_executor"
 version = "0.1.0"
 authors = ["deathwish5 <zyr16@mails.tsinghua.edu.cn>"]
 edition = "2018"
@@ -7,5 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+crossbeam = "^0.7"
+spin = "^0.5"
 
-mio = "^0.6"
+[dependencies.lazy_static]
+version = "1.4.0"
+features = ["spin_no_std"]

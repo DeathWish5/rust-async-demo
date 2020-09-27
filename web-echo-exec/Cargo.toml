@@ -1,5 +1,5 @@
 [package]
-name = "web-echo-mio"
+name = "web-echo-exec"
 version = "0.1.0"
 authors = ["deathwish5 <zyr16@mails.tsinghua.edu.cn>"]
 edition = "2018"
@@ -7,5 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
+simple_executor = { path = "../simple_executor" }
+lazy_static = "^1.4"
 mio = "^0.6"
