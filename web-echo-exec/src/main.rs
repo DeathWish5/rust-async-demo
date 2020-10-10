@@ -1,13 +1,12 @@
 use simple_executor as executor;
-use std::{sync::Arc, io::{Read, Write}, net::SocketAddr};
-use mio::tcp::{TcpListener, TcpStream};
+use std::{sync::Arc};
 
 pub mod net;
 
 async fn handle_client(stream: net::SimpleTcpStream) {
-    println!("Connect form {}", stream.peer_addr().unwrap());
+    println!("Connect form {}", stream.peer_addr());
     let stream = Arc::new(stream);
-    let mut buffer = [0u8; 128];
+    let mut buffer = [0u8; 512];
     let len = stream.async_read(&mut buffer).await;
     let message = if &buffer[..len] == b"hello\r\n" {
         "hi!\r\n"
@@ -15,7 +14,7 @@ async fn handle_client(stream: net::SimpleTcpStream) {
         "who are you?\r\n"
     };
     stream.async_write(message.as_bytes()).await;
-    println!("Connect form {} end", stream.peer_addr().unwrap());
+    println!("Connect form {} closed", stream.peer_addr());
 }
 
 async fn server() {
@@ -30,8 +29,6 @@ async fn server() {
 
 fn main() {
     executor::spawn(server());
-    let reactor = net::MIOREACTOR.lock().unwrap();
-    executor::spawn(reactor.poll());
-    drop(reactor);
+    executor::spawn(net::poll());
     executor::run();
 }

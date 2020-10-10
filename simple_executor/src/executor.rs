@@ -1,6 +1,7 @@
 use crate::task::{Task, TaskId};
 use alloc::{boxed::Box, collections::BTreeMap, sync::Arc, task::Wake};
 use core::{
+
     future::Future,
     task::{Context, Poll, Waker},
 };
@@ -9,79 +10,73 @@ use lazy_static::*;
 use spin::Mutex;
 
 pub struct Executor {
-    tasks: BTreeMap<TaskId, Task>,
     task_queue: Arc<ArrayQueue<TaskId>>,
-    waker_cache: BTreeMap<TaskId, Waker>,
+    inner: Mutex<ExecutorInner>,
 }
 
-impl Default for Executor {
+pub struct ExecutorInner {
+    tasks: BTreeMap<TaskId, Task>,
+}
+
+impl Default for ExecutorInner {
     fn default() -> Self {
-        Executor::new()
+        Self {
+            tasks: BTreeMap::new(),
+        }
     }
 }
 
 impl Executor {
     fn new() -> Self {
         Executor {
-            tasks: BTreeMap::new(),
             task_queue: Arc::new(ArrayQueue::new(1024)),
-            waker_cache: BTreeMap::new(),
+            inner: Mutex::new(ExecutorInner::default())
         }
     }
 
-    fn add_task(&mut self, task: Task) {
+    fn add_task(&self, task: Task) {
+        let mut inner = self.inner.lock();
         let task_id = task.id();
-        self.tasks.insert(task_id, task);
+        inner.tasks.insert(task_id, task);
         self.task_queue.push(task_id).unwrap();
     }
 
-    fn run_ready_tasks(&mut self) {
-        let Self {
-            tasks,
-            task_queue,
-            waker_cache,
-        } = self;
-
-        while let Ok(task_id) = task_queue.pop() {
-            let task = match tasks.get_mut(&task_id) {
-                Some(task) => task,
-                None => continue,
-            };
-            let waker = waker_cache
-                .entry(task_id)
-                .or_insert_with(|| TaskWaker::new(task_id, task_queue.clone()));
-            let mut context = Context::from_waker(waker);
+    fn run_ready_tasks(&self) {
+        let mut inner = self.inner.lock();
+        if let Ok(task_id) = self.task_queue.pop() {
+            let mut task = inner.tasks.remove(&task_id).unwrap();
+            let waker = TaskWaker::new(task_id, Arc::clone(&self.task_queue));
+            drop(inner);
+            let mut context = Context::from_waker(&waker);
             match task.poll(&mut context) {
-                Poll::Ready(()) => {
-                    // task done -> remove it and its cached waker
-                    tasks.remove(&task_id);
-                    waker_cache.remove(&task_id);
+                Poll::Ready(()) => {}
+                Poll::Pending => {
+                    let mut inner = self.inner.lock();
+                    inner.tasks.insert(task_id, task);
                 }
-                Poll::Pending => {}
             }
-        }
-    }
-
-    fn run(&mut self) -> ! {
-        loop {
-            self.run_ready_tasks();
         }
     }
 }
 
+#[allow(unsafe_code)]
+unsafe impl Sync for Executor {}
+
 lazy_static! {
-    static ref GLOBAL_EXECUTOR: Mutex<Box<Executor>> = {
-        let m = Executor::default();
-        Mutex::new(Box::new(m))
+    static ref GLOBAL_EXECUTOR: Box<Executor> = {
+        let m = Executor::new();
+        Box::new(m)
     };
 }
 
 pub fn spawn(future: impl Future<Output = ()> + Send + 'static) {
-    GLOBAL_EXECUTOR.lock().add_task(Task::new(future));
+    GLOBAL_EXECUTOR.add_task(Task::new(future));
 }
 
-pub fn run() {
-    GLOBAL_EXECUTOR.lock().run();
+pub fn run() -> ! {
+    loop {
+        GLOBAL_EXECUTOR.run_ready_tasks();
+    }
 }
 
 struct TaskWaker {
